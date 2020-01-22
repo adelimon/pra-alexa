@@ -1,48 +1,51 @@
 'use strict';
+require('dotenv').config();
 
 const Alexa = require('ask-sdk-core');
-// use 'ask-sdk' if standard SDK module is installed
+const axios = require('axios');
+const moment = require('moment');
+
+const BASE_URL = process.env.API_CALL_URL;
 
 const LaunchRequestHandler = {
     canHandle(handlerInput) {
         return handlerInput.requestEnvelope.request.type === 'LaunchRequest';
     },
     handle(handlerInput) {
-        const speechText = 'Welcome to the Alexa Skills Kit, you can say hello!';
-        return handlerInput.responseBuilder
-            .speak(speechText)
-            .reprompt(speechText)
-            .withSimpleCard('Palmyra Racing Association', speechText)
-            .getResponse();
+        const speechText = 'Palmyra Racing Association can tell you about things going on at Palmyra Racing Association.';
+        return speakAndShowCard(handlerInput, speechText);
     }
 };
 
-const HelloWorldIntentHandler = {
+const AllEventsIntentHandler = {
     canHandle(handlerInput) {
         return handlerInput.requestEnvelope.request.type === 'IntentRequest'
-            && handlerInput.requestEnvelope.request.intent.name === 'HelloWorldIntent';
+            && handlerInput.requestEnvelope.request.intent.name === 'AllEventsIntent';
     },
-    handle(handlerInput) {
-        const speechText = 'Palmyra Racing Association!';
-        return handlerInput.responseBuilder
-            .speak(speechText)
-            .withSimpleCard('Palmyra Racing Association', speechText)
-            .getResponse();
+    async handle(handlerInput) {
+        let allEventsResponse = await axios.get(BASE_URL + '/latest/events/thisyear');
+        let allEvents = allEventsResponse.data;
+        console.log((allEvents));
+ 
+        let eventsText = buildSpeakableDates(allEvents);
+        return speakAndShowCard(handlerInput, eventsText.join('. '));
     }
 };
 
-const AboutIntentHandler ={
+const NextEventIntentHandler = {
     canHandle(handlerInput) {
         return handlerInput.requestEnvelope.request.type === 'IntentRequest'
-            && handlerInput.requestEnvelope.request.intent.name === 'AboutIntent';
+            && handlerInput.requestEnvelope.request.intent.name === 'NextEventIntent';
     },
-    handle(handlerInput) {
-        const speechText = 'Palmyra Racing Association was founded in 1962.';
-        return handlerInput.responseBuilder
-            .speak(speechText)
-            .withSimpleCard('Palmyra Racing Association', speechText)
-            .getResponse();
-    }    
+    async handle(handlerInput) {
+        let allEventsResponse = await axios.get(BASE_URL + '/latest/events/next');
+        let allEvents = allEventsResponse.data;
+        console.log((allEvents));
+ 
+        let eventsText = buildSpeakableDates(allEvents);
+
+        return speakAndShowCard(handlerInput, eventsText.join('. '));
+    }
 };
 
 const HelpIntentHandler = {
@@ -51,12 +54,8 @@ const HelpIntentHandler = {
             && handlerInput.requestEnvelope.request.intent.name === 'AMAZON.HelpIntent';
     },
     handle(handlerInput) {
-        const speechText = 'You can say hello to me!';
-        return handlerInput.responseBuilder
-            .speak(speechText)
-            .reprompt(speechText)
-            .withSimpleCard('Palmyra Racing Association', speechText)
-            .getResponse();
+        const speechText = 'I can help you figure out what to ask Palmyra Racing Association.  Ask things like "whens the next race"';
+        return speakAndShowCard(handlerInput, speechText);
     }
 };
 
@@ -67,11 +66,7 @@ const CancelAndStopIntentHandler = {
                 || handlerInput.requestEnvelope.request.intent.name === 'AMAZON.StopIntent');
     },
     handle(handlerInput) {
-        const speechText = 'Goodbye!';
-        return handlerInput.responseBuilder
-            .speak(speechText)
-            .withSimpleCard('Palmyra Racing Association', speechText)
-            .getResponse();
+        return speakAndShowCard(handlerInput, 'Goodbye!');
     }
 };
 
@@ -98,11 +93,29 @@ const ErrorHandler = {
     },
 };
 
+function buildSpeakableDates(allEvents) {
+    let eventsText = [];      
+    eventsText.push('All races have a practice on the Saturday before.')
+    for (let event of allEvents)  {
+        // this is a hack to put the dates on the right day since dates coming back from the 
+        // API are in UTC+0 but they are actually meant for UTC+4.  
+        let speakableDate = moment(event.date).utcOffset(0).format('dddd, MMMM Do YYYY');
+        eventsText.push('On ' + speakableDate + ' there is a ' + event.type + '.  This is the ' + event.event_name + '.');
+    }
+    return eventsText;
+}
+
+function speakAndShowCard(handlerInput, speechText) {
+    return handlerInput.responseBuilder
+        .speak(speechText)
+        .withSimpleCard('Palmyra Racing Association', speechText)
+        .getResponse();
+}
 
 exports.handler = Alexa.SkillBuilders.custom()
-     .addRequestHandlers(LaunchRequestHandler,
-                         HelloWorldIntentHandler,
-                         AboutIntentHandler,
+     .addRequestHandlers(LaunchRequestHandler,                         
+                         AllEventsIntentHandler,
+                         NextEventIntentHandler,
                          HelpIntentHandler,
                          CancelAndStopIntentHandler,
                          SessionEndedRequestHandler)
